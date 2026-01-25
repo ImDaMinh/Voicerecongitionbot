@@ -33,7 +33,7 @@ async def join(ctx):
         while True:
             wake_text = await get_next_phrase()
 
-            wake_phrases = ["hello","hello bot","alo bot","alo","music bot","alopos","nhạc","music","mở nhạc","trái cam","mở bài","play music"]
+            wake_phrases = ["mở bài","play music"]
             spoken = wake_text.lower()
 
             # wake_phrases = ["hello","hello bot","alo bot","alo","music bot","alopos","nhạc","music","mở nhạc","trái cam","mở bài","play music"]
@@ -103,8 +103,7 @@ async def join(ctx):
                         # e.g. "play music son tung" -> "son tung"
                         # But if they just say "son tung", it works too.
                         trigger_words = ["play music", "phát nhạc", "mở bài", "bật bài", "play bài", "mở", "play"]
-                        song_query = spoken_cmd
-                        
+                        song_query = spoken_cmd                        
                         for trigger in trigger_words:
                             if spoken_cmd.startswith(trigger):
                                 song_query = spoken_cmd.replace(trigger, "", 1).strip()
