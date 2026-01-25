@@ -29,6 +29,5 @@ A Discord bot that listens to voice commands, plays music, and responds to wake 
 
 ## Usage
 *   Join a voice channel.
-*   Type `!join` or just start speaking if the bot is already in.
-*   Say "Hello bot" to check if it's listening.
-*   Say "Mở bài Sơn Tùng" to play music.
+*   Type `!join` to start.
+*   Say "Mở bài + tên bài" to play music.
