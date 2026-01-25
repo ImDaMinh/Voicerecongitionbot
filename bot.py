@@ -47,8 +47,6 @@ async def join(ctx):
                     break
 
             if matched_wake:
-                await ctx.send("👂 I'm listening! (You have 10 seconds to say a command...)")
-
                 # Check if there is a command included with the wake word
                 # e.g. "mở bài sơn tùng" -> matched "mở bài", remainder "sơn tùng"
                 initial_command = None
@@ -57,16 +55,6 @@ async def join(ctx):
                     if remainder:
                         initial_command = remainder
                 
-                # 🔊 Pick a random WAV from your folder
-                voice_files = ["voice1.wav", "voice2.wav", "voice3.wav"]
-                chosen_file = random.choice(voice_files)
-
-                # 🔊 Play it into VC
-                if ctx.voice_client and not ctx.voice_client.is_playing():
-                    source = discord.FFmpegPCMAudio(chosen_file)
-                    ctx.voice_client.play(source)
-                await ctx.send("🎙 Speak now...")
-
                 # Start a timer window for next command
                 start_time = asyncio.get_event_loop().time()
                 
@@ -123,22 +111,8 @@ async def join(ctx):
                                 break
                         
                         if not song_query:
-                             await ctx.send("❌ I heard the trigger but no song name.")
+                             # await ctx.send("❌ I heard the trigger but no song name.")
                              continue
-
-                        # 🔊 Play confirmation voice line (voice4 or voice5)
-                        music_lines = ["voice4.wav", "voice5.wav"]
-                        music_voice = random.choice(music_lines)
-
-                        # Only play confirmation if nothing is playing (to avoid talking over music)
-                        if ctx.voice_client and not ctx.voice_client.is_playing():
-                            source = discord.FFmpegPCMAudio(music_voice)
-                            ctx.voice_client.play(source)
-                            # We can wait a bit if we just started playing the voice line, 
-                            # but it's better to just proceed to queueing.
-                            # If we really want to wait for the voice line, we'd need to track if we *just* started it.
-                            # For now, removing the blocking wait is the priority.
-                            await asyncio.sleep(1.0) # Short wait for voice line to start/finish
 
                         # ▶️ Now queue and play the song
                         await add_to_queue(ctx, song_query, song_queue)
