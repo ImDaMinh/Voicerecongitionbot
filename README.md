@@ -3,9 +3,9 @@
 A Discord bot that listens to voice commands, plays music, and responds to wake words.
 
 ## Features
-*   **Voice Recognition**: Listens for wake words like "Hello bot", "Alo bot", "Mở bài [song name]".
+*   **Voice Recognition**: Listens for wake words "Mở bài [song name]".
 *   **Music Playback**: Plays music from YouTube using `yt-dlp`.
-*   **Voice Commands**: Supports "Skip", "Stop", "Leave" via voice.
+*   **Voice Commands**: Supports "Skip", "Stop", "Leave" via voice.(not yet)
 *   **Direct Song Request**: Say "Mở bài [song name]" to queue a song immediately.
 
 ## Setup
