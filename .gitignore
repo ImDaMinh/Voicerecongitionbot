@@ -1,0 +1,27 @@
+# Python virtual environments
+venv/
+.env/
+.venv/
+venv
+# Byte-compiled / cache
+__pycache__/
+__pycache__
+*.py[cod]
+*.pyo
+
+# VSCode or PyCharm files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+
+# Test and Debug files
+test_ytdl.py
+inspect_opus.py
+debug_last_phrase.wav
+
