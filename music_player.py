@@ -1,6 +1,7 @@
 import yt_dlp as youtube_dl
 import asyncio
 import discord
+from english_corrector import correct_english_query, get_query_variations
 
 ytdl_format_options = {
     'format': 'bestaudio/best',
@@ -42,26 +43,67 @@ def get_current_song():
 
 # 🎵 Add a song to the queue
 async def add_to_queue(ctx, query, queue):
-    try:
-        # Just pass the query directly, let yt-dlp handle it via default_search
-        info = await asyncio.get_event_loop().run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
-        
-        if 'entries' in info:
-            info = info['entries'][0]
-        
-        # Store all needed info
-        song_info = {
-            'url': info['url'],
-            'title': info.get('title', 'Unknown'),
-            'thumbnail': info.get('thumbnail'),
-            'duration': info.get('duration'),
-            'uploader': info.get('uploader', 'Unknown'),
-            'webpage_url': info.get('webpage_url', ''),
-        }
-        queue.append(song_info)
-        await ctx.send(f"✅ Đã thêm vào hàng đợi: **{song_info['title']}**")
-    except Exception as e:
-        await ctx.send(f"❌ Không thể thêm bài: {e}")
+    # Step 1: Correct the query using english_corrector
+    original_query = query
+    corrected_query = correct_english_query(query)
+    
+    # Get all variations to try
+    query_variations = get_query_variations(query)
+    
+    print(f"[SEARCH] Original: '{original_query}'")
+    print(f"[SEARCH] Corrected: '{corrected_query}'")
+    print(f"[SEARCH] Will try variations: {query_variations}")
+    
+    last_error = None
+    
+    # Try each variation until one works
+    for variation in query_variations:
+        try:
+            print(f"[SEARCH] Trying: '{variation}'")
+            
+            # Pass the query directly, let yt-dlp handle it via default_search
+            info = await asyncio.get_event_loop().run_in_executor(
+                None, 
+                lambda v=variation: ytdl.extract_info(v, download=False)
+            )
+            
+            if info is None:
+                print(f"[SEARCH] No results for '{variation}'")
+                continue
+            
+            if 'entries' in info:
+                if not info['entries']:
+                    print(f"[SEARCH] Empty entries for '{variation}'")
+                    continue
+                info = info['entries'][0]
+            
+            # Success! Store all needed info
+            song_info = {
+                'url': info['url'],
+                'title': info.get('title', 'Unknown'),
+                'thumbnail': info.get('thumbnail'),
+                'duration': info.get('duration'),
+                'uploader': info.get('uploader', 'Unknown'),
+                'webpage_url': info.get('webpage_url', ''),
+            }
+            queue.append(song_info)
+            
+            # Show what we searched for if it was corrected
+            if variation != original_query:
+                await ctx.send(f"🔍 Đã tìm: **{variation}** (từ '{original_query}')")
+            
+            await ctx.send(f"✅ Đã thêm vào hàng đợi: **{song_info['title']}**")
+            return  # Success, exit the function
+            
+        except Exception as e:
+            print(f"[SEARCH] Failed for '{variation}': {e}")
+            last_error = e
+            continue  # Try next variation
+    
+    # All variations failed
+    await ctx.send(f"❌ Không tìm thấy bài hát: {original_query}")
+    if last_error:
+        print(f"[SEARCH] Last error: {last_error}")
 
 # ▶️ Start playing from the queue
 async def start_playback(ctx, queue):
