@@ -38,19 +38,24 @@ async def join(ctx):
             spoken = wake_text.lower().strip()
 
             # ============================================
-            # DIRECT CONTROL COMMANDS (no wake phrase needed)
+            # DIRECT CONTROL COMMANDS (with or without Luna wake word)
             # These work anytime, even while music is playing
             # ============================================
             
+            # Define control command patterns (ALL require Luna wake word)
+            disconnect_commands = ["luna ngắt kết nối", "luna disconnect", "luna thoát", "luna cút", "luna bye"]
+            skip_commands = ["luna skip", "luna chuyển bài", "luna bỏ qua", "luna qua bài", "luna bài tiếp", "luna next"]
+            now_playing_commands = ["luna bài hiện tại", "luna đang phát", "luna bài gì", "luna now playing", "luna bài này là gì"]
+            
             # Check for leave/stop commands
-            if spoken in ["ngắt kết nối"]:
+            if spoken in disconnect_commands:
                 await ctx.send("👋 Đã kết thúc phiên nghe nhạc.")
                 await ctx.voice_client.disconnect()
                 song_queue.clear()
                 return
 
             # Check for skip commands
-            if spoken in ["chuyển bài","luna skip"]:
+            if spoken in skip_commands:
                 print(f"[DEBUG] Skip command detected: '{spoken}'")
                 if ctx.voice_client and ctx.voice_client.is_playing():
                     print("[DEBUG] Stopping current track...")
@@ -69,7 +74,7 @@ async def join(ctx):
                 continue
 
             # Check for now playing commands
-            if spoken in ["bài hiện tại"]:
+            if spoken in now_playing_commands:
                 song_info = get_current_song()
                 if song_info:
                     from music_player import format_duration

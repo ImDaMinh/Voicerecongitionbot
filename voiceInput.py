@@ -167,7 +167,13 @@ class DiscordSink(voice_recv.AudioSink):
             
             # Chỉ đưa vào queue nếu có kết quả và chứa wake word hoặc là lệnh quan trọng
             if final_text:
-                important_commands = ["chuyển bài", "ngắt kết nối", "bài hiện tại"]
+                # ALL commands require Luna wake word to prevent accidental triggers
+                important_commands = [
+                    "luna skip", "luna chuyển bài", "luna ngắt kết nối", 
+                    "luna disconnect", "luna thoát", "luna cút", "luna bye",
+                    "luna bỏ qua", "luna qua bài", "luna bài tiếp", "luna next",
+                    "luna bài hiện tại", "luna đang phát", "luna bài gì", "luna now playing", "luna bài này là gì"
+                ]
                 
                 # Kiểm tra xem có phải là nội dung quan trọng không
                 contains_wake_word = any(wake in final_text for wake in WAKE_WORDS)
