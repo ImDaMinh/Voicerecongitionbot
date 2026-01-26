@@ -4,10 +4,12 @@ from discord.ext import commands
 from discord.ext import voice_recv
 from voiceInput import setup_sink, get_next_phrase
 from music_player import add_to_queue, start_playback, get_current_song
+from content_filter import filter_song_request
 import asyncio
 import difflib
 import random
 import os
+import time
 from dotenv import load_dotenv
 
 
@@ -22,6 +24,12 @@ song_queue = []
 # 🎵 Currently playing song title
 current_song = None
 
+# 🛡️ Anti-overload protection
+_last_command_time = 0
+_command_cooldown = 2.0  # seconds between commands
+_is_processing = False
+_last_processed_text = ""
+
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
@@ -31,11 +39,28 @@ async def join(ctx):
     if ctx.author.voice:
         vc = await ctx.author.voice.channel.connect(cls=voice_recv.VoiceRecvClient)
         current_sink = setup_sink(vc, bot)
-        await ctx.send("🎤 Listening... Say 'Luna + tên bài hát' để bật nhạc!")
+        await ctx.send("🎤 Listening... Say 'Lunaplay + tên bài hát' để bật nhạc!")
 
         while True:
+            global _last_command_time, _is_processing, _last_processed_text
+            
             wake_text = await get_next_phrase()
             spoken = wake_text.lower().strip()
+            
+            # 🛡️ ANTI-OVERLOAD: Skip if we're still processing or in cooldown
+            current_time = time.time()
+            if _is_processing:
+                print(f"[OVERLOAD] Skipping '{spoken[:30]}...' - still processing previous command")
+                continue
+            
+            if current_time - _last_command_time < _command_cooldown:
+                print(f"[COOLDOWN] Skipping '{spoken[:30]}...' - cooldown active")
+                continue
+            
+            # 🛡️ Skip duplicate commands within short time
+            if spoken == _last_processed_text and current_time - _last_command_time < 5.0:
+                print(f"[DUPLICATE] Skipping duplicate command: '{spoken[:30]}...'")
+                continue
 
             # ============================================
             # DIRECT CONTROL COMMANDS (with or without Luna wake word)
@@ -43,9 +68,9 @@ async def join(ctx):
             # ============================================
             
             # Define control command patterns (ALL require Luna wake word)
-            disconnect_commands = ["luna ngắt kết nối", "luna disconnect", "luna thoát", "luna cút", "luna bye"]
-            skip_commands = ["luna skip", "luna chuyển bài", "luna bỏ qua", "luna qua bài", "luna bài tiếp", "luna next"]
-            now_playing_commands = ["luna bài hiện tại", "luna đang phát", "luna bài gì", "luna now playing", "luna bài này là gì"]
+            disconnect_commands = ["luna ngắt kết nối", "luna disconnect"]
+            skip_commands = ["luna skip", "luna chuyển bài", "luna bỏ qua"]
+            now_playing_commands = ["luna bài hiện tại", "luna now playing"]
             
             # Check for leave/stop commands
             if spoken in disconnect_commands:
@@ -96,7 +121,7 @@ async def join(ctx):
             # ============================================
             # WAKE PHRASE DETECTION (for playing new songs)
             # ============================================
-            wake_phrases = ["luna"]
+            wake_phrases = ["luna play"]
             
             # Sort by length desc to match longest phrase first
             sorted_wake_phrases = sorted(wake_phrases, key=len, reverse=True)
@@ -108,82 +133,98 @@ async def join(ctx):
                     break
 
             if matched_wake:
-                # Check if there is a command included with the wake word
-                # e.g. "mở bài sơn tùng" -> matched "mở bài", remainder "sơn tùng"
-                initial_command = None
-                if spoken.startswith(matched_wake):
-                    remainder = spoken[len(matched_wake):].strip()
-                    if remainder:
-                        initial_command = remainder
+                # 🛡️ Set processing lock
+                _is_processing = True
+                _last_command_time = time.time()
+                _last_processed_text = spoken
                 
-                # Start a timer window for next command
-                start_time = asyncio.get_event_loop().time()
-                
-                # If we have an initial command, process it immediately in the loop
-                first_pass = True
-                
-                while asyncio.get_event_loop().time() - start_time < 10:
-                    try:
-                        if first_pass and initial_command:
-                            command_text = initial_command
-                        else:
-                            command_text = await asyncio.wait_for(get_next_phrase(), timeout=10.0)
-                        
-                        first_pass = False
-                    except asyncio.TimeoutError:
-                        break
-                    except Exception as e:
-                        print(f"[ERROR] Command listen error: {e}")
-                        break
-
-                    if not command_text.strip():
-                        continue
-
-                    spoken_cmd = command_text.lower()
+                try:
+                    # Check if there is a command included with the wake word
+                    # e.g. "mở bài sơn tùng" -> matched "mở bài", remainder "sơn tùng"
+                    initial_command = None
+                    if spoken.startswith(matched_wake):
+                        remainder = spoken[len(matched_wake):].strip()
+                        if remainder:
+                            initial_command = remainder
                     
-                    # Check for control commands inside the command window too
-                    if spoken_cmd in ["leave", "stop", "exit", "thoát", "cút"]:
-                        await ctx.send("👋 Đã kết thúc phiên nghe nhạc.")
-                        await ctx.voice_client.disconnect()
-                        song_queue.clear()
-                        return
-
-                    elif spoken_cmd in ["skip", "next", "bỏ qua", "qua bài", "bài tiếp", "tiếp"]:
-                        if ctx.voice_client and ctx.voice_client.is_playing():
-                            ctx.voice_client.stop()
-                            await ctx.send("⏭️ Đang chuyển bài...")
-                        else:
-                            await ctx.send("❌ Không có bài nào đang phát.")
-                        continue
-
-                    elif spoken_cmd in ["now playing", "đang phát", "bài gì", "đang nghe gì", "what song", "this song", "bài này là gì"]:
-                        current = get_current_song()
-                        if current:
-                            await ctx.send(f"🎵 Đang phát: **{current}**")
-                        else:
-                            await ctx.send("❌ Không có bài nào đang phát.")
-                        continue
+                    # Start a timer window for next command
+                    start_time = asyncio.get_event_loop().time()
+                
+                    # If we have an initial command, process it immediately in the loop
+                    first_pass = True
+                    
+                    while asyncio.get_event_loop().time() - start_time < 10:
+                        try:
+                            if first_pass and initial_command:
+                                command_text = initial_command
+                            else:
+                                command_text = await asyncio.wait_for(get_next_phrase(), timeout=10.0)
                             
-                    # If not a control command, assume it's a song request
-                    else:
-                        # Remove any accidental trigger words if user still says them
-                        trigger_words = ["play music", "phát nhạc", "mở bài", "bật bài", "play bài", "mở", "play"]
-                        song_query = spoken_cmd                        
-                        for trigger in trigger_words:
-                            if spoken_cmd.startswith(trigger):
-                                song_query = spoken_cmd.replace(trigger, "", 1).strip()
-                                break
-                        
-                        if not song_query:
-                             continue
+                            first_pass = False
+                        except asyncio.TimeoutError:
+                            break
+                        except Exception as e:
+                            print(f"[ERROR] Command listen error: {e}")
+                            break
 
-                        # ▶️ Now queue and play the song
-                        await add_to_queue(ctx, song_query, song_queue)
-                        await start_playback(ctx, song_queue)
-                        break
+                        if not command_text.strip():
+                            continue
+
+                        spoken_cmd = command_text.lower()
+                        
+                        # Check for control commands inside the command window too
+                        if spoken_cmd in ["leave", "stop", "exit", "thoát", "cút"]:
+                            await ctx.send("👋 Đã kết thúc phiên nghe nhạc.")
+                            await ctx.voice_client.disconnect()
+                            song_queue.clear()
+                            return
+
+                        elif spoken_cmd in ["skip", "next", "bỏ qua", "qua bài", "bài tiếp", "tiếp"]:
+                            if ctx.voice_client and ctx.voice_client.is_playing():
+                                ctx.voice_client.stop()
+                                await ctx.send("⏭️ Đang chuyển bài...")
+                            else:
+                                await ctx.send("❌ Không có bài nào đang phát.")
+                            continue
+
+                        elif spoken_cmd in ["now playing", "đang phát", "bài gì", "đang nghe gì", "what song", "this song", "bài này là gì"]:
+                            current = get_current_song()
+                            if current:
+                                await ctx.send(f"🎵 Đang phát: **{current}**")
+                            else:
+                                await ctx.send("❌ Không có bài nào đang phát.")
+                            continue
+                                
+                        # If not a control command, assume it's a song request
+                        else:
+                            # Remove any accidental trigger words if user still says them
+                            trigger_words = ["play music", "phát nhạc", "mở bài", "bật bài", "play bài", "mở", "play"]
+                            song_query = spoken_cmd                        
+                            for trigger in trigger_words:
+                                if spoken_cmd.startswith(trigger):
+                                    song_query = spoken_cmd.replace(trigger, "", 1).strip()
+                                    break
+                            
+                            if not song_query:
+                                 continue
+
+                            # 🛡️ Content filter check
+                            is_allowed, filter_reason = filter_song_request(song_query)
+                            if not is_allowed:
+                                await ctx.send(f"❌ {filter_reason}")
+                                print(f"[FILTER] Blocked: '{song_query}' - {filter_reason}")
+                                break
+
+                            # ▶️ Now queue and play the song
+                            await add_to_queue(ctx, song_query, song_queue)
+                            await start_playback(ctx, song_queue)
+                            break
+                finally:
+                    # 🛡️ Release processing lock
+                    _is_processing = False
+                    _last_command_time = time.time()
             else:
                 print(f"[DEBUG] Ignored: '{wake_text}'")
-
             await asyncio.sleep(0.5)  # prevent loop spam
 
 
