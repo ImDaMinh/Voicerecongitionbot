@@ -31,7 +31,7 @@ async def join(ctx):
     if ctx.author.voice:
         vc = await ctx.author.voice.channel.connect(cls=voice_recv.VoiceRecvClient)
         current_sink = setup_sink(vc, bot)
-        await ctx.send("🎤 Listening... Say 'hello bot'or''music bot' to wake me up!")
+        await ctx.send("🎤 Listening... Say 'Luna + tên bài hát' để bật nhạc!")
 
         while True:
             wake_text = await get_next_phrase()
