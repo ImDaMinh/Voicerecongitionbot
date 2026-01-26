@@ -3,7 +3,7 @@ import discord
 from discord.ext import commands
 from discord.ext import voice_recv
 from voiceInput import setup_sink, get_next_phrase
-from music_player import add_to_queue, start_playback
+from music_player import add_to_queue, start_playback, get_current_song
 import asyncio
 import difflib
 import random
@@ -19,6 +19,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # 🔁 Song queue
 song_queue = []
 
+# 🎵 Currently playing song title
+current_song = None
+
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
@@ -27,16 +30,69 @@ async def on_ready():
 async def join(ctx):
     if ctx.author.voice:
         vc = await ctx.author.voice.channel.connect(cls=voice_recv.VoiceRecvClient)
-        setup_sink(vc, bot)
+        current_sink = setup_sink(vc, bot)
         await ctx.send("🎤 Listening... Say 'hello bot'or''music bot' to wake me up!")
 
         while True:
             wake_text = await get_next_phrase()
+            spoken = wake_text.lower().strip()
 
-            wake_phrases = ["mở bài","play music"]
-            spoken = wake_text.lower()
+            # ============================================
+            # DIRECT CONTROL COMMANDS (no wake phrase needed)
+            # These work anytime, even while music is playing
+            # ============================================
+            
+            # Check for leave/stop commands
+            if spoken in ["ngắt kết nối"]:
+                await ctx.send("👋 Đã kết thúc phiên nghe nhạc.")
+                await ctx.voice_client.disconnect()
+                song_queue.clear()
+                return
 
-            # wake_phrases = ["hello","hello bot","alo bot","alo","music bot","alopos","nhạc","music","mở nhạc","trái cam","mở bài","play music"]
+            # Check for skip commands
+            if spoken in ["chuyển bài","luna skip"]:
+                print(f"[DEBUG] Skip command detected: '{spoken}'")
+                if ctx.voice_client and ctx.voice_client.is_playing():
+                    print("[DEBUG] Stopping current track...")
+                    ctx.voice_client.stop()
+                    await ctx.send("⏭️ Đang chuyển bài...")
+                    # Wait for the audio to finish stopping
+                    await asyncio.sleep(0.5)
+                    # Re-setup listener to ensure voice recognition continues
+                    print("[DEBUG] Re-setting up voice listener...")
+                    current_sink = setup_sink(vc, bot)
+                    await asyncio.sleep(1.0)
+                    print("[DEBUG] Skip complete, listener reset, resuming voice recognition loop")
+                else:
+                    await ctx.send("❌ Không có bài nào đang phát.")
+                print("[DEBUG] Continuing main loop after skip...")
+                continue
+
+            # Check for now playing commands
+            if spoken in ["bài hiện tại"]:
+                song_info = get_current_song()
+                if song_info:
+                    from music_player import format_duration
+                    embed = discord.Embed(
+                        title="🎵 Đang phát",
+                        description=f"**[{song_info['title']}]({song_info['webpage_url']})**",
+                        color=discord.Color.from_rgb(30, 215, 96)  # Spotify green
+                    )
+                    if song_info.get('thumbnail'):
+                        embed.set_thumbnail(url=song_info['thumbnail'])
+                    embed.add_field(name="👤 Nghệ sĩ", value=song_info.get('uploader', 'Unknown'), inline=True)
+                    embed.add_field(name="⏱️ Thời lượng", value=format_duration(song_info.get('duration')), inline=True)
+                    await ctx.send(embed=embed)
+                else:
+                    await ctx.send("❌ Không có bài nào đang phát.")
+                await asyncio.sleep(0.5)
+                continue
+
+            # ============================================
+            # WAKE PHRASE DETECTION (for playing new songs)
+            # ============================================
+            wake_phrases = ["luna"]
+            
             # Sort by length desc to match longest phrase first
             sorted_wake_phrases = sorted(wake_phrases, key=len, reverse=True)
             
@@ -65,9 +121,6 @@ async def join(ctx):
                     try:
                         if first_pass and initial_command:
                             command_text = initial_command
-                            # Don't set first_pass = False here, we want to treat it as if we just received it
-                            # But we need to make sure we don't loop infinitely if we don't break
-                            # The logic below breaks on success, so it's fine.
                         else:
                             command_text = await asyncio.wait_for(get_next_phrase(), timeout=10.0)
                         
@@ -83,25 +136,32 @@ async def join(ctx):
 
                     spoken_cmd = command_text.lower()
                     
-                    # Check for control commands first
+                    # Check for control commands inside the command window too
                     if spoken_cmd in ["leave", "stop", "exit", "thoát", "cút"]:
-                        await ctx.send("👋 Voice session ended.")
+                        await ctx.send("👋 Đã kết thúc phiên nghe nhạc.")
                         await ctx.voice_client.disconnect()
                         song_queue.clear()
                         return
 
-                    elif spoken_cmd in ["skip", "next", "bỏ qua"]:
+                    elif spoken_cmd in ["skip", "next", "bỏ qua", "qua bài", "bài tiếp", "tiếp"]:
                         if ctx.voice_client and ctx.voice_client.is_playing():
-                            ctx.voice_client.stop_playing()
-                            await ctx.send("⏭️ Skipping...")
+                            ctx.voice_client.stop()
+                            await ctx.send("⏭️ Đang chuyển bài...")
                         else:
-                            await ctx.send("❌ Nothing playing.")
+                            await ctx.send("❌ Không có bài nào đang phát.")
+                        continue
+
+                    elif spoken_cmd in ["now playing", "đang phát", "bài gì", "đang nghe gì", "what song", "this song", "bài này là gì"]:
+                        current = get_current_song()
+                        if current:
+                            await ctx.send(f"🎵 Đang phát: **{current}**")
+                        else:
+                            await ctx.send("❌ Không có bài nào đang phát.")
+                        continue
                             
                     # If not a control command, assume it's a song request
                     else:
                         # Remove any accidental trigger words if user still says them
-                        # e.g. "play music son tung" -> "son tung"
-                        # But if they just say "son tung", it works too.
                         trigger_words = ["play music", "phát nhạc", "mở bài", "bật bài", "play bài", "mở", "play"]
                         song_query = spoken_cmd                        
                         for trigger in trigger_words:
@@ -110,7 +170,6 @@ async def join(ctx):
                                 break
                         
                         if not song_query:
-                             # await ctx.send("❌ I heard the trigger but no song name.")
                              continue
 
                         # ▶️ Now queue and play the song
@@ -118,9 +177,9 @@ async def join(ctx):
                         await start_playback(ctx, song_queue)
                         break
             else:
-                print(f"[DEBUG] Ignored wake attempt: '{wake_text}'")
+                print(f"[DEBUG] Ignored: '{wake_text}'")
 
-            await asyncio.sleep(1.0)  # prevent loop spam
+            await asyncio.sleep(0.5)  # prevent loop spam
 
 
     else:
