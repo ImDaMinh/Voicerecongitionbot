@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
-bot = commands.Bot(command_prefix="l", intents=intents)
+bot = commands.Bot(command_prefix="l", intents=intents, help_command=None)
 
 # 🔁 Song queue
 song_queue = []
@@ -479,9 +479,9 @@ async def clear(ctx):
     song_queue.clear()
     await ctx.send("🗑️ Đã xóa hàng đợi.")
 
-@bot.command(name='lunahelp', aliases=['lh', 'commands'])
+@bot.command(name='help', aliases=['h'])
 async def help_cmd(ctx):
-    """Show help message. Usage: lhelp"""
+    """Show help message. Usage: lhelp or lh"""
     embed = discord.Embed(
         title="🌙 Luna Music Bot",
         description="**Bot phát nhạc điều khiển bằng giọng nói & lệnh text**\n━━━━━━━━━━━━━━━━━━━━━━",
