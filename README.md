@@ -13,8 +13,6 @@ Bot Discord phát nhạc điều khiển bằng **giọng nói** và **lệnh te
 - **YouTube & Spotify**: Hỗ trợ playlist từ cả hai nền tảng
 - **Lazy loading**: Tải bài khi sắp phát để thêm playlist nhanh
 - **Tìm kiếm thông minh**: Tự sửa lỗi phiên âm tiếng Anh
-- **Queue với pagination**: Nút chuyển trang để xem toàn bộ queue
-- **Chất lượng cao**: 192kbps, âm lượng 50%
 
 ### 🛡️ Lọc nội dung
 - Chặn từ ngữ không phù hợp (Việt/Anh)
