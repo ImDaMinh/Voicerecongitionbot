@@ -328,63 +328,121 @@ async def queue(ctx):
         await ctx.send(embed=embed)
         return
     
-    # Create embed
-    embed = discord.Embed(
-        title="🎵 Hàng đợi nhạc",
-        color=discord.Color.from_rgb(255, 0, 127)  # Pink
-    )
+    # Calculate pagination
+    songs_per_page = 10
+    total_pages = max(1, (len(song_queue) + songs_per_page - 1) // songs_per_page)
     
-    # Show currently playing
-    current = get_current_song()
-    if current:
-        current_duration = format_duration(current.get('duration'))
-        embed.add_field(
-            name="▶️ Đang phát",
-            value=f"**[{current['title']}]({current.get('webpage_url', '')})**\n👤 {current.get('uploader', 'Unknown')} • ⏱️ {current_duration}",
-            inline=False
-        )
-    
-    # Show queue
-    if song_queue:
-        # Calculate total duration
-        total_seconds = sum(s.get('duration', 0) or 0 for s in song_queue)
-        total_duration = format_duration(total_seconds) if total_seconds > 0 else "?"
-        
-        # Show first 10 songs
-        queue_text = ""
-        display_count = min(10, len(song_queue))
-        
-        for i, song_info in enumerate(song_queue[:display_count]):
-            if isinstance(song_info, dict):
-                title = song_info.get('title', 'Unknown')
-                duration = format_duration(song_info.get('duration'))
-                # Truncate long titles
-                if len(title) > 40:
-                    title = title[:37] + "..."
-                queue_text += f"`{i+1}.` **{title}** ({duration})\n"
-            else:
-                queue_text += f"`{i+1}.` {song_info}\n"
-        
-        if len(song_queue) > 10:
-            remaining = len(song_queue) - 10
-            queue_text += f"\n*... và {remaining} bài khác*"
-        
-        embed.add_field(
-            name=f"📋 Tiếp theo ({len(song_queue)} bài)",
-            value=queue_text,
-            inline=False
+    def create_queue_embed(page: int) -> discord.Embed:
+        """Create embed for a specific page"""
+        embed = discord.Embed(
+            title="🎵 Hàng đợi nhạc",
+            color=discord.Color.from_rgb(255, 0, 127)  # Pink
         )
         
-        # Footer with stats
-        embed.set_footer(text=f"⏱️ Tổng thời lượng queue: {total_duration}")
+        # Show currently playing
+        current = get_current_song()
+        if current:
+            current_duration = format_duration(current.get('duration'))
+            embed.add_field(
+                name="▶️ Đang phát",
+                value=f"**[{current['title']}]({current.get('webpage_url', '')})**\n👤 {current.get('uploader', 'Unknown')} • ⏱️ {current_duration}",
+                inline=False
+            )
+        
+        # Show queue for current page
+        if song_queue:
+            start_idx = page * songs_per_page
+            end_idx = min(start_idx + songs_per_page, len(song_queue))
+            
+            queue_text = ""
+            for i in range(start_idx, end_idx):
+                song_info = song_queue[i]
+                if isinstance(song_info, dict):
+                    title = song_info.get('title', 'Unknown')
+                    duration = format_duration(song_info.get('duration'))
+                    if len(title) > 45:
+                        title = title[:42] + "..."
+                    queue_text += f"`{i+1}.` **{title}** ({duration})\n"
+                else:
+                    queue_text += f"`{i+1}.` {song_info}\n"
+            
+            # Calculate total duration
+            total_seconds = sum(s.get('duration', 0) or 0 for s in song_queue)
+            total_duration = format_duration(total_seconds) if total_seconds > 0 else "?"
+            
+            embed.add_field(
+                name=f"📋 Tiếp theo ({len(song_queue)} bài)",
+                value=queue_text if queue_text else "*Không có bài nào*",
+                inline=False
+            )
+            
+            embed.set_footer(text=f"📄 Trang {page + 1}/{total_pages} • ⏱️ Tổng: {total_duration}")
+        else:
+            embed.add_field(
+                name="📋 Tiếp theo",
+                value="*Không có bài nào trong queue*",
+                inline=False
+            )
+        
+        return embed
+    
+    # Create View with pagination buttons
+    class QueueView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=120)
+            self.current_page = 0
+            self.update_buttons()
+        
+        def update_buttons(self):
+            self.first_btn.disabled = self.current_page == 0
+            self.prev_btn.disabled = self.current_page == 0
+            self.next_btn.disabled = self.current_page >= total_pages - 1
+            self.last_btn.disabled = self.current_page >= total_pages - 1
+            self.page_btn.label = f"📄 {self.current_page + 1}/{total_pages}"
+        
+        @discord.ui.button(label="⏮️", style=discord.ButtonStyle.secondary)
+        async def first_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+            self.current_page = 0
+            self.update_buttons()
+            await interaction.response.edit_message(embed=create_queue_embed(self.current_page), view=self)
+        
+        @discord.ui.button(label="◀️", style=discord.ButtonStyle.primary)
+        async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+            self.current_page = max(0, self.current_page - 1)
+            self.update_buttons()
+            await interaction.response.edit_message(embed=create_queue_embed(self.current_page), view=self)
+        
+        @discord.ui.button(label="📄 1/1", style=discord.ButtonStyle.secondary, disabled=True)
+        async def page_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+            pass  # This button just shows page info
+        
+        @discord.ui.button(label="▶️", style=discord.ButtonStyle.primary)
+        async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+            self.current_page = min(total_pages - 1, self.current_page + 1)
+            self.update_buttons()
+            await interaction.response.edit_message(embed=create_queue_embed(self.current_page), view=self)
+        
+        @discord.ui.button(label="⏭️", style=discord.ButtonStyle.secondary)
+        async def last_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+            self.current_page = total_pages - 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=create_queue_embed(self.current_page), view=self)
+        
+        async def on_timeout(self):
+            # Disable all buttons on timeout
+            for item in self.children:
+                item.disabled = True
+            try:
+                await self.message.edit(view=self)
+            except:
+                pass
+    
+    # Only show pagination if more than 1 page
+    if total_pages > 1:
+        view = QueueView()
+        view.message = await ctx.send(embed=create_queue_embed(0), view=view)
     else:
-        embed.add_field(
-            name="📋 Tiếp theo",
-            value="*Không có bài nào trong queue*",
-            inline=False
-        )
-    
-    await ctx.send(embed=embed)
+        await ctx.send(embed=create_queue_embed(0))
 
 @bot.command(name='nowplaying', aliases=['np', 'now'])
 async def nowplaying(ctx):
@@ -425,49 +483,68 @@ async def clear(ctx):
 async def help_cmd(ctx):
     """Show help message. Usage: lhelp"""
     embed = discord.Embed(
-        title="🎵 Luna Music Bot - Hướng dẫn",
-        description="Bot hỗ trợ điều khiển bằng **giọng nói** và **lệnh text**",
-        color=discord.Color.purple()
+        title="🌙 Luna Music Bot",
+        description="**Bot phát nhạc điều khiển bằng giọng nói & lệnh text**\n━━━━━━━━━━━━━━━━━━━━━━",
+        color=discord.Color.from_rgb(138, 43, 226)  # Violet
     )
     
+    # Voice Commands Section
     embed.add_field(
-        name="🎤 Điều khiển bằng giọng nói",
+        name="🎤 **ĐIỀU KHIỂN GIỌNG NÓI**",
         value=(
-            "• **'Lunaplay + tên bài'** - Phát bài hát\n"
-            "• **'Luna mở bài + tên bài'** - Phát bài hát\n"
-            "• **'Luna skip'** - Chuyển bài\n"
-            "• **'Luna bài hiện tại'** - Xem bài đang phát\n"
-            "• **'Luna ngắt kết nối'** - Dừng bot"
+            "```\n"
+            "🎵 Phát nhạc:\n"
+            "   「Luna play + tên bài」\n"
+            "   「Luna mở bài + tên bài」\n"
+            "\n"
+            "⏭️ Chuyển bài:  「Luna skip」\n"
+            "🎵 Bài hiện tại: 「Luna bài hiện tại」\n"
+            "👋 Thoát:        「Luna ngắt kết nối」\n"
+            "```"
         ),
         inline=False
     )
     
+    # Text Commands Section
     embed.add_field(
-        name="⌨️ Lệnh text (prefix: l)",
+        name="⌨️ **LỆNH TEXT** (prefix: `l`)",
         value=(
-            "• `ljoin` - Vào voice channel\n"
-            "• `lplay <tên bài>` - Phát bài hát\n"
-            "• `lplay <playlist URL>` - Phát playlist (YT/Spotify)\n"
-            "• `lqueue` - Xem hàng đợi\n"
-            "• `lnowplaying` - Xem bài đang phát\n"
-            "• `lskip` - Chuyển bài\n"
-            "• `lclear` - Xóa hàng đợi\n"
-            "• `lstop` - Dừng và rời kênh"
+            "```\n"
+            "ljoin           → Vào voice channel\n"
+            "lplay <bài>     → Phát bài hát\n"
+            "lplay <URL>     → Phát playlist YT/Spotify\n"
+            "lqueue          → Xem hàng đợi\n"
+            "lnowplaying     → Bài đang phát\n"
+            "lskip           → Chuyển bài\n"
+            "lclear          → Xóa hàng đợi\n"
+            "lstop           → Dừng & rời kênh\n"
+            "```"
         ),
         inline=False
     )
     
+    # Aliases Section
     embed.add_field(
-        name="💡 Mẹo",
+        name="⚡ **SHORTCUTS**",
         value=(
-            "• Nói tên bài tiếng Anh bằng phiên âm Việt!\n"
-            "• Thêm 'remix' nếu muốn bản remix\n"
-            "• Hỗ trợ playlist: YouTube, YouTube Music, Spotify"
+            "`lp` = `lplay` • `lq` = `lqueue` • `ls` = `lskip`\n"
+            "`lnp` = `lnowplaying` • `ldc` = `lstop`"
         ),
         inline=False
     )
     
-    embed.set_footer(text="Made with ❤️ for Vietnamese Discord users")
+    # Tips Section
+    embed.add_field(
+        name="💡 **TIPS**",
+        value=(
+            "• Nói tên bài tiếng Anh bằng **phiên âm Việt** được!\n"
+            "• Thêm `remix`, `live`, `acoustic` để tìm bản khác\n"
+            "• Paste link **YouTube/Spotify playlist** để thêm nhiều bài"
+        ),
+        inline=False
+    )
+    
+    embed.set_footer(text="Made with 💜 for Vietnamese Discord users • v2.0")
     await ctx.send(embed=embed)
 
 
