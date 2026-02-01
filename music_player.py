@@ -45,15 +45,15 @@ except ImportError:
     print("⚠️ spotipy not installed - run: pip install spotipy")
 
 ytdl_format_options = {
-    'format': 'bestaudio[ext=m4a]/bestaudio/best',
+    'format': 'bestaudio[ext=m4a][abr>128]/bestaudio[abr>128]/bestaudio/best',  # Prefer higher bitrate
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,
-    'default_search': 'ytsearch10',  # Get 10 results to filter better
+    'default_search': 'ytsearch10',
     'source_address': '0.0.0.0',
-    'extract_flat': 'in_playlist',  # Faster search
+    'extract_flat': 'in_playlist',
     'nocheckcertificate': True,
-    'ignoreerrors': True,  # Skip errors in search results
+    'ignoreerrors': True,
     'logtostderr': False,
     'geo_bypass': True,
     'extractor_args': {
@@ -65,7 +65,7 @@ ytdl_format_options = {
 }
 ffmpeg_options = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin',
-    'options': '-vn -loglevel warning -bufsize 64k -ar 48000 -ac 2'
+    'options': '-vn -loglevel error -af "volume=0.5" -b:a 192k -ar 48000 -ac 2'  # 50% volume, 192kbps, 48kHz
 }
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 
@@ -163,15 +163,12 @@ async def search_spotify_track(query):
         return None
     
     try:
-        print(f"[SPOTIFY SEARCH] Searching for: {query}")
-        
         results = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: spotify_client.search(q=query, type='track', limit=5)
         )
         
         if not results or not results.get('tracks') or not results['tracks'].get('items'):
-            print(f"[SPOTIFY SEARCH] No results for: {query}")
             return None
         
         tracks = results['tracks']['items']
@@ -210,11 +207,9 @@ async def search_spotify_track(query):
             'thumbnail': best_track.get('album', {}).get('images', [{}])[0].get('url') if best_track.get('album', {}).get('images') else None,
         }
         
-        print(f"[SPOTIFY SEARCH] Found: {result['title']} - {result['artist']}")
         return result
         
-    except Exception as e:
-        print(f"[SPOTIFY SEARCH] Error: {e}")
+    except Exception:
         return None
 
 def format_duration(seconds):
@@ -454,7 +449,6 @@ async def add_to_queue(ctx, query, queue):
         # Use Spotify's exact track name + artist for more accurate YouTube search
         spotify_enhanced_query = f"{spotify_track['title']} {spotify_track['artist']}"
         await ctx.send(f"🟢 **Spotify:** {spotify_track['title']} - {spotify_track['artist']}")
-        print(f"[SPOTIFY-FIRST] Using enhanced query: {spotify_enhanced_query}")
     
     # Step 1: Correct the query using english_corrector
     corrected_query = correct_english_query(query)
@@ -475,16 +469,11 @@ async def add_to_queue(ctx, query, queue):
             enhanced_variations.append(f"{v} official audio")
             enhanced_variations.append(f"{v} official music video")
     
-    print(f"[SEARCH] Original: '{original_query}'")
-    print(f"[SEARCH] Corrected: '{corrected_query}'")
-    print(f"[SEARCH] Will try variations: {enhanced_variations[:5]}")  # Limit log
-    
     last_error = None
     
     # Try each variation until one works
     for variation in enhanced_variations:
         try:
-            print(f"[SEARCH] Trying: '{variation}'")
             
             # Pass the query directly, let yt-dlp handle it via default_search
             info = await asyncio.get_event_loop().run_in_executor(
@@ -493,14 +482,12 @@ async def add_to_queue(ctx, query, queue):
             )
             
             if info is None:
-                print(f"[SEARCH] No results for '{variation}'")
                 continue
             
             # Handle playlist/search results
             if 'entries' in info:
                 entries = [e for e in info['entries'] if e is not None]
                 if not entries:
-                    print(f"[SEARCH] Empty entries for '{variation}'")
                     continue
                 
                 # Score and rank entries to find best music video

@@ -12,7 +12,7 @@ text_queue = asyncio.Queue()
 # ============================================
 # CONFIGURATION - Điều chỉnh tại đây
 # ============================================
-DEBUG_MODE = False  # Tắt debug messages để giảm spam
+DEBUG_MODE = False  # Tắt debug messages
 DEBUG_INTERVAL = 30  # Chỉ hiện debug mỗi 30 giây (nếu DEBUG_MODE = True)
 SILENCE_THRESHOLD = 1.5  # Thời gian im lặng trước khi xử lý (giây)
 MIN_AUDIO_LENGTH = 0.8  # Độ dài tối thiểu của audio để xử lý (giây)
