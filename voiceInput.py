@@ -17,7 +17,53 @@ DEBUG_INTERVAL = 30  # Chỉ hiện debug mỗi 30 giây (nếu DEBUG_MODE = Tru
 SILENCE_THRESHOLD = 1.5  # Thời gian im lặng trước khi xử lý (giây)
 MIN_AUDIO_LENGTH = 0.8  # Độ dài tối thiểu của audio để xử lý (giây)
 RMS_THRESHOLD = 50  # Ngưỡng âm lượng để nhận voice (tăng lên để bỏ qua tiếng ồn nhỏ)
-WAKE_WORDS = ["luna", "lu na", "lú na", "lủ na"]  # Từ khóa kích hoạt
+WAKE_WORDS = ["luna", "lu na", "lú na", "lủ na", "mở bài", "mở"]  # Từ khóa kích hoạt
+PRIORITY_LOCK_TIMEOUT = 15.0  # Thời gian giữ lock user (giây)
+
+# ============================================
+# SINGLE USER PRIORITY SYSTEM
+# Chỉ nghe voice từ 1 user khi có lệnh được kích hoạt
+# ============================================
+_active_user_id = None  # User ID đang được ưu tiên
+_active_user_lock_time = 0  # Thời điểm bắt đầu lock
+
+def lock_user(user_id):
+    """Lock voice recognition to only listen to this user."""
+    global _active_user_id, _active_user_lock_time
+    _active_user_id = user_id
+    _active_user_lock_time = time.time()
+    print(f"[PRIORITY] 🔒 Locked to user: {user_id}")
+
+def unlock_user():
+    """Unlock voice recognition to listen to everyone."""
+    global _active_user_id, _active_user_lock_time
+    if _active_user_id:
+        print(f"[PRIORITY] 🔓 Unlocked from user: {_active_user_id}")
+    _active_user_id = None
+    _active_user_lock_time = 0
+
+def is_user_locked():
+    """Check if a specific user is locked."""
+    global _active_user_id, _active_user_lock_time
+    if _active_user_id is None:
+        return False
+    # Auto-unlock after timeout
+    if time.time() - _active_user_lock_time > PRIORITY_LOCK_TIMEOUT:
+        print(f"[PRIORITY] ⏰ Lock timeout, unlocking user: {_active_user_id}")
+        unlock_user()
+        return False
+    return True
+
+def is_allowed_user(user_id):
+    """Check if this user is allowed to speak."""
+    global _active_user_id
+    if not is_user_locked():
+        return True  # No lock, everyone can speak
+    return user_id == _active_user_id  # Only locked user can speak
+
+def get_active_user():
+    """Get the currently locked user ID."""
+    return _active_user_id if is_user_locked() else None
 
 class DiscordSink(voice_recv.AudioSink):
     def __init__(self, bot):
@@ -36,6 +82,11 @@ class DiscordSink(voice_recv.AudioSink):
         self.last_process_time = {}  # user_id -> time (để rate limit)
         self.pending_users = set()  # Users đang được xử lý
         
+        # Duplicate detection - ngăn command gửi nhiều lần
+        self.last_recognized_text = ""
+        self.last_recognized_time = 0
+        self.DUPLICATE_COOLDOWN = 5.0  # Thời gian chờ trước khi chấp nhận cùng text (giây)
+        
         self.bot.loop.create_task(self.check_silence())
         
     def wants_opus(self):
@@ -52,6 +103,12 @@ class DiscordSink(voice_recv.AudioSink):
                     for user, buffer in list(self.buffers.items()):
                         if len(buffer) > 0:
                             silence_duration = current_time - self.last_speak_time.get(user, 0)
+                            
+                            # Check if this user is allowed to speak (priority system)
+                            if not is_allowed_user(user.id if hasattr(user, 'id') else user):
+                                # Clear buffer of non-priority user during lock
+                                self.buffers[user] = bytearray()
+                                continue
                             
                             # Chỉ xử lý nếu đủ im lặng và user chưa đang được xử lý
                             if silence_duration > SILENCE_THRESHOLD and user not in self.pending_users:
@@ -180,8 +237,17 @@ class DiscordSink(voice_recv.AudioSink):
                 contains_command = any(cmd in final_text for cmd in important_commands)
                 
                 if contains_wake_word or contains_command:
-                    print(f"[Voice] ✅ Recognized: {final_text}")
-                    await text_queue.put(final_text)
+                    current_time = time.time()
+                    
+                    # Duplicate check - không gửi cùng text trong DUPLICATE_COOLDOWN giây
+                    if (final_text == self.last_recognized_text and 
+                        current_time - self.last_recognized_time < self.DUPLICATE_COOLDOWN):
+                        print(f"[Voice] ⏳ Duplicate skipped: {final_text[:30]}...")
+                    else:
+                        print(f"[Voice] ✅ Recognized: {final_text}")
+                        self.last_recognized_text = final_text
+                        self.last_recognized_time = current_time
+                        await text_queue.put(final_text)
                 else:
                     # Không phải lệnh quan trọng -> bỏ qua (không spam)
                     if DEBUG_MODE:
@@ -200,9 +266,20 @@ class DiscordSink(voice_recv.AudioSink):
         pass
 
 def setup_sink(voice_client, bot):
-    sink = DiscordSink(bot)
-    voice_client.listen(sink)
-    return sink
+    """Setup voice sink for listening. Safely handles already-listening state."""
+    try:
+        # If already listening, don't re-setup (prevents audio interruption)
+        if hasattr(voice_client, 'is_listening') and voice_client.is_listening():
+            # Already listening, no need to re-setup
+            return None
+        
+        sink = DiscordSink(bot)
+        voice_client.listen(sink)
+        print("[Voice] 🎤 Voice listener started")
+        return sink
+    except Exception as e:
+        print(f"[Voice] setup_sink error (may be already listening): {e}")
+        return None
 
 async def get_next_phrase():
     return await text_queue.get()

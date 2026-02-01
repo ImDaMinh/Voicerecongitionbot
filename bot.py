@@ -2,8 +2,8 @@ import patch_opus
 import discord
 from discord.ext import commands
 from discord.ext import voice_recv
-from voiceInput import setup_sink, get_next_phrase
-from music_player import add_to_queue, start_playback, get_current_song
+from voiceInput import setup_sink, get_next_phrase, lock_user, unlock_user
+from music_player import add_to_queue, start_playback, get_current_song, add_playlist_to_queue
 from content_filter import filter_song_request
 import asyncio
 import difflib
@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="l", intents=intents)
 
 # 🔁 Song queue
 song_queue = []
@@ -39,7 +39,7 @@ async def join(ctx):
     if ctx.author.voice:
         vc = await ctx.author.voice.channel.connect(cls=voice_recv.VoiceRecvClient)
         current_sink = setup_sink(vc, bot)
-        await ctx.send("🎤 Listening... Say 'Lunaplay + tên bài hát' để bật nhạc!")
+        await ctx.send("🎤 Listening... Nói 'Lunaplay + tên bài' hoặc 'Luna mở bài + tên bài' để bật nhạc!")
 
         while True:
             global _last_command_time, _is_processing, _last_processed_text
@@ -121,7 +121,7 @@ async def join(ctx):
             # ============================================
             # WAKE PHRASE DETECTION (for playing new songs)
             # ============================================
-            wake_phrases = ["luna play"]
+            wake_phrases = ["luna play", "luna mở bài"]
             
             # Sort by length desc to match longest phrase first
             sorted_wake_phrases = sorted(wake_phrases, key=len, reverse=True)
@@ -137,6 +137,9 @@ async def join(ctx):
                 _is_processing = True
                 _last_command_time = time.time()
                 _last_processed_text = spoken
+                
+                # 🔒 Lock to this user only (priority system)
+                lock_user(ctx.author.id)
                 
                 try:
                     # Check if there is a command included with the wake word
@@ -183,6 +186,9 @@ async def join(ctx):
                             if ctx.voice_client and ctx.voice_client.is_playing():
                                 ctx.voice_client.stop()
                                 await ctx.send("⏭️ Đang chuyển bài...")
+                                # Re-setup voice listener
+                                await asyncio.sleep(0.5)
+                                setup_sink(vc, bot)
                             else:
                                 await ctx.send("❌ Không có bài nào đang phát.")
                             continue
@@ -218,11 +224,16 @@ async def join(ctx):
                             # ▶️ Now queue and play the song
                             await add_to_queue(ctx, song_query, song_queue)
                             await start_playback(ctx, song_queue)
+                            # Re-setup voice listener after starting playback
+                            await asyncio.sleep(0.5)
+                            setup_sink(vc, bot)
                             break
                 finally:
                     # 🛡️ Release processing lock
                     _is_processing = False
                     _last_command_time = time.time()
+                    # 🔓 Unlock user priority
+                    unlock_user()
             else:
                 print(f"[DEBUG] Ignored: '{wake_text}'")
             await asyncio.sleep(0.5)  # prevent loop spam
@@ -231,28 +242,233 @@ async def join(ctx):
     else:
         await ctx.send("❌ You're not in a voice channel.")
 
-@bot.command()
+# ============================================
+# MANUAL TEXT COMMANDS (prefix: l)
+# ============================================
+
+@bot.command(name='play', aliases=['p'])
+async def play(ctx, *, query: str = None):
+    """Play a song by text command. Usage: lplay <song name>"""
+    if not query:
+        await ctx.send("❌ Bạn cần nhập tên bài hát. Ví dụ: `lplay shape of you`")
+        return
+    
+    # Join voice channel if not already connected
+    if not ctx.voice_client:
+        if ctx.author.voice:
+            vc = await ctx.author.voice.channel.connect(cls=voice_recv.VoiceRecvClient)
+            await asyncio.sleep(0.5)  # Wait for voice client to be ready
+            print(f"[DEBUG] Connected to voice channel, voice_client ready: {ctx.voice_client is not None}")
+        else:
+            await ctx.send("❌ Bạn cần vào voice channel trước!")
+            return
+    
+    # 🎵 Check if it's a playlist URL (YouTube, YouTube Music, or Spotify)
+    is_playlist = (
+        'list=' in query or 
+        '/playlist?' in query or 
+        'spotify.com/playlist' in query or
+        'open.spotify.com/playlist' in query or
+        'music.youtube.com' in query
+    )
+    
+    if is_playlist:
+        print(f"[DEBUG] Detected playlist URL: {query}")
+        added = await add_playlist_to_queue(ctx, query, song_queue)
+        if added > 0:
+            await start_playback(ctx, song_queue)
+            # Re-setup voice listener after starting playback
+            await asyncio.sleep(0.5)
+            if ctx.voice_client:
+                setup_sink(ctx.voice_client, bot)
+        return
+    
+    # Filter content (only for non-playlist queries)
+    is_allowed, filter_reason = filter_song_request(query)
+    if not is_allowed:
+        await ctx.send(f"❌ {filter_reason}")
+        return
+    
+    # Add to queue and play
+    print(f"[DEBUG] Adding to queue: {query}")
+    await add_to_queue(ctx, query, song_queue)
+    print(f"[DEBUG] Queue after add: {len(song_queue)} items")
+    print(f"[DEBUG] Voice client playing: {ctx.voice_client.is_playing() if ctx.voice_client else 'No VC'}")
+    await start_playback(ctx, song_queue)
+    # Re-setup voice listener after starting playback
+    await asyncio.sleep(0.5)
+    if ctx.voice_client:
+        setup_sink(ctx.voice_client, bot)
+    print(f"[DEBUG] After start_playback, playing: {ctx.voice_client.is_playing() if ctx.voice_client else 'No VC'}")
+
+@bot.command(name='skip', aliases=['s', 'next'])
 async def skip(ctx):
+    """Skip the current song. Usage: lskip"""
     if ctx.voice_client and ctx.voice_client.is_playing():
-        ctx.voice_client.stop_playing()
-        await ctx.send("⏭️ Skipping current track...")
-
-@bot.command()
-async def queue(ctx):
-    if song_queue:
-        msg = "\n".join([f"{i+1}. {title}" for i, (_, title) in enumerate(song_queue)])
-        await ctx.send(f"📃 Current Queue:\n{msg}")
+        ctx.voice_client.stop()
+        await ctx.send("⏭️ Đang chuyển bài...")
+        # Re-setup voice listener after skip
+        await asyncio.sleep(0.5)
+        setup_sink(ctx.voice_client, bot)
+        await asyncio.sleep(0.5)
     else:
-        await ctx.send("📭 Queue is empty.")
+        await ctx.send("❌ Không có bài nào đang phát.")
 
-@bot.command()
-async def leave(ctx):
+@bot.command(name='queue', aliases=['q'])
+async def queue(ctx):
+    """Show the current queue. Usage: lqueue"""
+    from music_player import format_duration, get_current_song
+    
+    if not song_queue and not get_current_song():
+        embed = discord.Embed(
+            title="📭 Hàng đợi trống",
+            description="Dùng `lplay <tên bài>` để thêm nhạc!",
+            color=discord.Color.light_grey()
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    # Create embed
+    embed = discord.Embed(
+        title="🎵 Hàng đợi nhạc",
+        color=discord.Color.from_rgb(255, 0, 127)  # Pink
+    )
+    
+    # Show currently playing
+    current = get_current_song()
+    if current:
+        current_duration = format_duration(current.get('duration'))
+        embed.add_field(
+            name="▶️ Đang phát",
+            value=f"**[{current['title']}]({current.get('webpage_url', '')})**\n👤 {current.get('uploader', 'Unknown')} • ⏱️ {current_duration}",
+            inline=False
+        )
+    
+    # Show queue
+    if song_queue:
+        # Calculate total duration
+        total_seconds = sum(s.get('duration', 0) or 0 for s in song_queue)
+        total_duration = format_duration(total_seconds) if total_seconds > 0 else "?"
+        
+        # Show first 10 songs
+        queue_text = ""
+        display_count = min(10, len(song_queue))
+        
+        for i, song_info in enumerate(song_queue[:display_count]):
+            if isinstance(song_info, dict):
+                title = song_info.get('title', 'Unknown')
+                duration = format_duration(song_info.get('duration'))
+                # Truncate long titles
+                if len(title) > 40:
+                    title = title[:37] + "..."
+                queue_text += f"`{i+1}.` **{title}** ({duration})\n"
+            else:
+                queue_text += f"`{i+1}.` {song_info}\n"
+        
+        if len(song_queue) > 10:
+            remaining = len(song_queue) - 10
+            queue_text += f"\n*... và {remaining} bài khác*"
+        
+        embed.add_field(
+            name=f"📋 Tiếp theo ({len(song_queue)} bài)",
+            value=queue_text,
+            inline=False
+        )
+        
+        # Footer with stats
+        embed.set_footer(text=f"⏱️ Tổng thời lượng queue: {total_duration}")
+    else:
+        embed.add_field(
+            name="📋 Tiếp theo",
+            value="*Không có bài nào trong queue*",
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='nowplaying', aliases=['np', 'now'])
+async def nowplaying(ctx):
+    """Show the current playing song. Usage: lnowplaying or lnp"""
+    song_info = get_current_song()
+    if song_info:
+        from music_player import format_duration
+        embed = discord.Embed(
+            title="🎵 Đang phát",
+            description=f"**[{song_info['title']}]({song_info['webpage_url']})**",
+            color=discord.Color.from_rgb(30, 215, 96)  # Spotify green
+        )
+        if song_info.get('thumbnail'):
+            embed.set_thumbnail(url=song_info['thumbnail'])
+        embed.add_field(name="� Nghệ sĩ", value=song_info.get('uploader', 'Unknown'), inline=True)
+        embed.add_field(name="⏱️ Thời lượng", value=format_duration(song_info.get('duration')), inline=True)
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send("❌ Không có bài nào đang phát.")
+
+@bot.command(name='stop', aliases=['leave', 'disconnect', 'dc'])
+async def stop(ctx):
+    """Stop playing and leave the voice channel. Usage: lstop"""
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
         song_queue.clear()
-        await ctx.send("👋 Left the voice channel and cleared the queue.")
+        await ctx.send("👋 Đã dừng phát nhạc và rời kênh.")
     else:
-        await ctx.send("❌ I'm not in a voice channel.")
+        await ctx.send("❌ Bot không ở trong voice channel.")
+
+@bot.command(name='clear', aliases=['c'])
+async def clear(ctx):
+    """Clear the queue. Usage: lclear"""
+    song_queue.clear()
+    await ctx.send("🗑️ Đã xóa hàng đợi.")
+
+@bot.command(name='lunahelp', aliases=['lh', 'commands'])
+async def help_cmd(ctx):
+    """Show help message. Usage: lhelp"""
+    embed = discord.Embed(
+        title="🎵 Luna Music Bot - Hướng dẫn",
+        description="Bot hỗ trợ điều khiển bằng **giọng nói** và **lệnh text**",
+        color=discord.Color.purple()
+    )
+    
+    embed.add_field(
+        name="🎤 Điều khiển bằng giọng nói",
+        value=(
+            "• **'Lunaplay + tên bài'** - Phát bài hát\n"
+            "• **'Luna mở bài + tên bài'** - Phát bài hát\n"
+            "• **'Luna skip'** - Chuyển bài\n"
+            "• **'Luna bài hiện tại'** - Xem bài đang phát\n"
+            "• **'Luna ngắt kết nối'** - Dừng bot"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="⌨️ Lệnh text (prefix: l)",
+        value=(
+            "• `ljoin` - Vào voice channel\n"
+            "• `lplay <tên bài>` - Phát bài hát\n"
+            "• `lplay <playlist URL>` - Phát playlist (YT/Spotify)\n"
+            "• `lqueue` - Xem hàng đợi\n"
+            "• `lnowplaying` - Xem bài đang phát\n"
+            "• `lskip` - Chuyển bài\n"
+            "• `lclear` - Xóa hàng đợi\n"
+            "• `lstop` - Dừng và rời kênh"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="💡 Mẹo",
+        value=(
+            "• Nói tên bài tiếng Anh bằng phiên âm Việt!\n"
+            "• Thêm 'remix' nếu muốn bản remix\n"
+            "• Hỗ trợ playlist: YouTube, YouTube Music, Spotify"
+        ),
+        inline=False
+    )
+    
+    embed.set_footer(text="Made with ❤️ for Vietnamese Discord users")
+    await ctx.send(embed=embed)
 
 
 load_dotenv()
