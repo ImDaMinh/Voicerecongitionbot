@@ -1,152 +1,141 @@
-# 🎵 Luna - Discord Voice Recognition Music Bot
+# 🌙 Luna - Discord Voice Recognition Music Bot
 
-A powerful Discord bot that listens to voice commands in both Vietnamese and English, plays music from YouTube, and provides intelligent content filtering.
+Bot Discord phát nhạc điều khiển bằng **giọng nói** và **lệnh text**, hỗ trợ cả tiếng Việt và tiếng Anh.
 
-## ✨ Features
+## ✨ Tính năng
 
-### 🎤 Voice Recognition
-- **Dual-language support**: Recognizes both Vietnamese (vi-VN) and English (en-US) simultaneously
-- **Wake word activation**: Uses "Luna" as the wake word to prevent accidental triggers
-- **Smart audio processing**: 
-  - Configurable silence detection and RMS threshold
-  - Anti-overload protection with cooldown system
-  - Duplicate command filtering
-  - Rate limiting to prevent spam
+### 🎤 Điều khiển giọng nói
+- **Song ngữ**: Nhận diện tiếng Việt & tiếng Anh đồng thời
+- **Wake word "Luna"**: Ngăn kích hoạt nhầm
+- **Chống spam**: Cooldown, lọc duplicate, rate limiting
 
-### 🎶 Music Playback
-- **YouTube integration**: Plays music directly from YouTube using `yt-dlp`
-- **Intelligent search**: 
-  - Automatic English query correction for better search results
-  - Multiple search variations to find the right song
-  - Supports Vietnamese and English song names
-- **Rich embeds**: Beautiful Discord embeds showing song info, thumbnail, artist, and duration
-- **Queue system**: Add multiple songs to the queue
+### 🎶 Phát nhạc
+- **YouTube & Spotify**: Hỗ trợ playlist từ cả hai nền tảng
+- **Lazy loading**: Tải bài khi sắp phát để thêm playlist nhanh
+- **Tìm kiếm thông minh**: Tự sửa lỗi phiên âm tiếng Anh
+- **Queue với pagination**: Nút chuyển trang để xem toàn bộ queue
+- **Chất lượng cao**: 192kbps, âm lượng 50%
 
-### 🛡️ Content Filtering
-- **Profanity filter**: Blocks inappropriate words in Vietnamese and English
-- **Spam protection**: Detects and blocks nonsensical or spam requests
-- **Smart validation**: Uses heuristics to identify valid song requests
-
-### 🎮 Voice Commands
-
-#### Music Control (Wake word required: "Luna")
-- `Luna play [song name]` - Play a song
-- `Luna skip` / `Luna chuyển bài` - Skip current song
-- `Luna bài hiện tại` / `Luna now playing` - Show current song info
-- `Luna ngắt kết nối` / `Luna disconnect` - Disconnect bot from voice channel
-
-#### Text Commands
-- `!join` - Bot joins your voice channel and starts listening
-- `!skip` - Skip the current song
-- `!queue` - Show the current song queue
-- `!leave` - Bot leaves the voice channel
-
-## 🚀 Setup
-
-### Prerequisites
-- Python 3.8 or higher
-- FFmpeg installed and added to system PATH
-- Discord Bot Token
-
-### Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/ImDaMinh/Voicerecongitionbot.git
-   cd Voicerecongitionbot
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment variables**:
-   Create a `.env` file in the root directory:
-   ```env
-   DISCORD_TOKEN=your_discord_bot_token_here
-   ```
-
-4. **Run the bot**:
-   ```bash
-   python bot.py
-   ```
-
-## 📋 Requirements
-
-- `discord.py` - Discord API wrapper
-- `discord-ext-voice-recv` - Voice receiving extension
-- `yt-dlp` - YouTube downloader
-- `python-dotenv` - Environment variable management
-- `SpeechRecognition` - Speech recognition library
-- `PyNaCl` - Voice encryption support
-
-## 🎯 Usage Example
-
-1. Join a voice channel in Discord
-2. Type `!join` in a text channel
-3. Wait for the bot to join and start listening
-4. Say: **"Luna play despacito"** or **"Luna play see tình"**
-5. The bot will search for and play the song
-6. Use **"Luna skip"** to skip to the next song
-7. Use **"Luna bài hiện tại"** to see what's currently playing
-
-## 🔧 Configuration
-
-You can adjust the voice recognition settings in `voiceInput.py`:
-
-```python
-DEBUG_MODE = False          # Enable/disable debug messages
-SILENCE_THRESHOLD = 1.5     # Silence duration before processing (seconds)
-MIN_AUDIO_LENGTH = 0.8      # Minimum audio length to process (seconds)
-RMS_THRESHOLD = 50          # Volume threshold for voice detection
-```
-
-## 🏗️ Project Structure
-
-```
-voicerecongitionbot/
-├── bot.py                  # Main bot logic and command handling
-├── voiceInput.py          # Voice recognition and audio processing
-├── music_player.py        # Music playback and YouTube integration
-├── content_filter.py      # Content filtering and validation
-├── english_corrector.py   # English query correction
-├── patch_opus.py          # Opus codec patching
-├── requirements.txt       # Python dependencies
-└── .env                   # Environment variables (create this)
-```
-
-## 🎨 Features in Detail
-
-### Anti-Overload Protection
-- Command cooldown system (2 seconds between commands)
-- Processing lock to prevent concurrent command execution
-- Duplicate command detection within 5-second window
-
-### Smart Language Detection
-- Prioritizes Vietnamese for control commands (skip, disconnect, etc.)
-- Prioritizes English for song names
-- Runs both language recognitions in parallel for speed
-
-### Content Safety
-- Blacklist of inappropriate words in multiple languages
-- Validation for song name length and format
-- Detection of spam patterns and excessive character repetition
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to submit issues or pull requests.
-
-## 📝 License
-
-This project is open source and available under the MIT License.
-
-## 🙏 Acknowledgments
-
-- Built with [discord.py](https://github.com/Rapptz/discord.py)
-- Music powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-- Voice recognition using Google Speech Recognition API
+### 🛡️ Lọc nội dung
+- Chặn từ ngữ không phù hợp (Việt/Anh)
+- Phát hiện spam và request vô nghĩa
 
 ---
 
-**Made with ❤️ by ImDaMinh**
+## 🎮 Lệnh
+
+### Giọng nói (Wake word: "Luna")
+| Lệnh | Mô tả |
+|------|-------|
+| `Luna play [tên bài]` | Phát bài hát |
+| `Luna mở bài [tên bài]` | Phát bài hát |
+| `Luna skip` | Chuyển bài |
+| `Luna chuyển bài` | Chuyển bài |
+| `Luna bài hiện tại` | Xem bài đang phát |
+| `Luna ngắt kết nối` | Ngắt kết nối bot |
+
+### Text (Prefix: `l`)
+| Lệnh | Alias | Mô tả |
+|------|-------|-------|
+| `ljoin` | | Vào voice channel |
+| `lplay <bài>` | `lp` | Phát bài hát |
+| `lplay <URL>` | `lp` | Phát playlist (YouTube/Spotify) |
+| `lqueue` | `lq` | Xem hàng đợi |
+| `lnowplaying` | `lnp` | Bài đang phát |
+| `lskip` | `ls` | Chuyển bài |
+| `lclear` | | Xóa hàng đợi |
+| `lstop` | `ldc` | Dừng & rời kênh |
+| `lhelp` | `lh` | Xem hướng dẫn |
+
+---
+
+## 🚀 Cài đặt
+
+### Yêu cầu
+- Python 3.8+
+- FFmpeg (đã thêm vào PATH)
+- Discord Bot Token
+
+### Bước cài đặt
+
+```bash
+# 1. Clone repo
+git clone https://github.com/ImDaMinh/Voicerecongitionbot.git
+cd Voicerecongitionbot
+
+# 2. Cài dependencies
+pip install -r requirements.txt
+
+# 3. Tạo file .env
+echo DISCORD_TOKEN=your_token_here > .env
+
+# 4. (Tùy chọn) Thêm Spotify API để hỗ trợ playlist Spotify
+# SPOTIFY_CLIENT_ID=your_client_id
+# SPOTIFY_CLIENT_SECRET=your_client_secret
+
+# 5. Chạy bot
+python bot.py
+```
+
+---
+
+## 📦 Dependencies
+
+```
+discord.py>=2.0.0
+discord-ext-voice-recv
+PyNaCl
+SpeechRecognition
+webrtcvad-wheels
+yt-dlp
+python-dotenv
+beautifulsoup4
+aiohttp
+requests
+```
+
+---
+
+## ⚙️ Cấu hình
+
+Trong `voiceInput.py`:
+```python
+DEBUG_MODE = False       # Bật/tắt debug
+SILENCE_THRESHOLD = 1.5  # Thời gian im lặng trước khi xử lý (giây)
+MIN_AUDIO_LENGTH = 0.8   # Độ dài audio tối thiểu (giây)
+RMS_THRESHOLD = 50       # Ngưỡng âm lượng
+```
+
+---
+
+## 📂 Cấu trúc project
+
+```
+voicerecongitionbot/
+├── bot.py               # Logic chính, xử lý lệnh
+├── voiceInput.py        # Nhận diện giọng nói
+├── music_player.py      # Phát nhạc, YouTube/Spotify
+├── content_filter.py    # Lọc nội dung
+├── english_corrector.py # Sửa lỗi phiên âm tiếng Anh
+├── patch_opus.py        # Patch Opus codec
+├── requirements.txt     # Dependencies
+└── .env                 # Token (tự tạo)
+```
+
+---
+
+## 💡 Tips
+
+- Nói tên bài tiếng Anh bằng **phiên âm Việt** được!
+- Thêm `remix`, `live`, `acoustic` để tìm bản khác
+- Paste link **YouTube/Spotify playlist** để thêm nhiều bài
+
+---
+
+## 📝 License
+
+MIT License
+
+---
+
+**Made with 💜 by ImDaMinh**
