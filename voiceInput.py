@@ -5,6 +5,19 @@ import asyncio
 import audioop
 import time
 import threading
+import tempfile
+import os
+
+# 🤖 Load Whisper AI model for better voice recognition
+try:
+    import whisper
+    WHISPER_MODEL = whisper.load_model("base")  # Options: tiny, base, small, medium, large
+    WHISPER_AVAILABLE = True
+    print("✅ Whisper AI loaded (model: base)")
+except Exception as e:
+    WHISPER_AVAILABLE = False
+    WHISPER_MODEL = None
+    print(f"⚠️ Whisper not available, using Google Speech: {e}")
 
 # Global queue for recognized text
 text_queue = asyncio.Queue()
@@ -169,7 +182,7 @@ class DiscordSink(voice_recv.AudioSink):
                     self.buffers[user].extend(data.pcm)
 
     async def process_audio(self, pcm_data, user=None):
-        """Xử lý audio và nhận dạng giọng nói"""
+        """Xử lý audio và nhận dạng giọng nói với Whisper AI"""
         try:
             # Kiểm tra độ dài tối thiểu
             min_bytes = int(48000 * 2 * MIN_AUDIO_LENGTH)
@@ -181,46 +194,81 @@ class DiscordSink(voice_recv.AudioSink):
             except Exception as e:
                 return
 
-            audio = sr.AudioData(mono_data, 48000, 2)
-
             loop = asyncio.get_event_loop()
-            
-            async def try_recognize(lang):
-                try:
-                    result = await loop.run_in_executor(
-                        None, 
-                        lambda: self.recognizer.recognize_google(audio, language=lang)
-                    )
-                    return result.strip().lower() if result else None
-                except sr.UnknownValueError:
-                    return None
-                except Exception:
-                    return None
-            
-            # Chạy cả 2 ngôn ngữ song song
-            vi_task = asyncio.create_task(try_recognize("vi-VN"))
-            en_task = asyncio.create_task(try_recognize("en-US"))
-            
-            vi_result, en_result = await asyncio.gather(vi_task, en_task)
-            
-            # Xác định kết quả
             final_text = None
             
-            if vi_result and en_result:
-                # Ưu tiên tiếng Việt cho các lệnh điều khiển
-                vi_commands = ["luna", "chuyển bài", "ngắt kết nối", "bài hiện tại", "ngắt", "kết nối"]
-                is_vi_command = any(cmd in vi_result for cmd in vi_commands)
-                
-                if is_vi_command:
-                    final_text = vi_result
-                else:
-                    # Cho bài hát, ưu tiên tiếng Anh
-                    final_text = en_result if len(en_result) >= len(vi_result) * 0.7 else vi_result
+            # 🤖 Use Whisper AI if available (much better accuracy)
+            if WHISPER_AVAILABLE and WHISPER_MODEL is not None:
+                try:
+                    # Convert PCM to WAV file for Whisper
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                        tmp_path = tmp_file.name
+                        with wave.open(tmp_file, 'wb') as wav:
+                            wav.setnchannels(1)
+                            wav.setsampwidth(2)
+                            wav.setframerate(48000)
+                            wav.writeframes(mono_data)
                     
-            elif vi_result:
-                final_text = vi_result
-            elif en_result:
-                final_text = en_result
+                    # Run Whisper in executor to not block async loop
+                    def run_whisper():
+                        result = WHISPER_MODEL.transcribe(
+                            tmp_path,
+                            language=None,  # Auto-detect language (best for Vi+En mix)
+                            task="transcribe",
+                            fp16=False  # Use fp32 for CPU compatibility
+                        )
+                        return result["text"].strip().lower()
+                    
+                    final_text = await loop.run_in_executor(None, run_whisper)
+                    
+                    # Cleanup temp file
+                    try:
+                        os.unlink(tmp_path)
+                    except:
+                        pass
+                    
+                    if DEBUG_MODE:
+                        print(f"[Whisper] Raw: {final_text}")
+                        
+                except Exception as e:
+                    print(f"[Whisper] Error, falling back to Google: {e}")
+                    final_text = None
+            
+            # 📱 Fallback to Google Speech if Whisper not available or failed
+            if final_text is None:
+                audio = sr.AudioData(mono_data, 48000, 2)
+                
+                async def try_recognize(lang):
+                    try:
+                        result = await loop.run_in_executor(
+                            None, 
+                            lambda: self.recognizer.recognize_google(audio, language=lang)
+                        )
+                        return result.strip().lower() if result else None
+                    except sr.UnknownValueError:
+                        return None
+                    except Exception:
+                        return None
+                
+                # Chạy cả 2 ngôn ngữ song song
+                vi_task = asyncio.create_task(try_recognize("vi-VN"))
+                en_task = asyncio.create_task(try_recognize("en-US"))
+                
+                vi_result, en_result = await asyncio.gather(vi_task, en_task)
+                
+                if vi_result and en_result:
+                    vi_commands = ["luna", "chuyển bài", "ngắt kết nối", "bài hiện tại", "ngắt", "kết nối"]
+                    is_vi_command = any(cmd in vi_result for cmd in vi_commands)
+                    
+                    if is_vi_command:
+                        final_text = vi_result
+                    else:
+                        final_text = en_result if len(en_result) >= len(vi_result) * 0.7 else vi_result
+                        
+                elif vi_result:
+                    final_text = vi_result
+                elif en_result:
+                    final_text = en_result
             
             # Chỉ đưa vào queue nếu có kết quả và chứa wake word hoặc là lệnh quan trọng
             if final_text:
@@ -244,7 +292,7 @@ class DiscordSink(voice_recv.AudioSink):
                         current_time - self.last_recognized_time < self.DUPLICATE_COOLDOWN):
                         print(f"[Voice] ⏳ Duplicate skipped: {final_text[:30]}...")
                     else:
-                        print(f"[Voice] ✅ Recognized: {final_text}")
+                        print(f"[Voice] ✅ Recognized (Whisper): {final_text}")
                         self.last_recognized_text = final_text
                         self.last_recognized_time = current_time
                         await text_queue.put(final_text)
