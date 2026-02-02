@@ -1,5 +1,11 @@
 import patch_opus
 import discord
+import logging
+
+# 🔇 Suppress noisy voice_recv logs (RTCP packets, unknown ssrc, etc.)
+logging.getLogger('discord.ext.voice_recv.reader').setLevel(logging.WARNING)
+logging.getLogger('discord.ext.voice_recv.gateway').setLevel(logging.WARNING)
+logging.getLogger('discord.ext.voice_recv.opus').setLevel(logging.WARNING)
 from discord.ext import commands
 from discord.ext import voice_recv
 from voiceInput import setup_sink, get_next_phrase, lock_user, unlock_user
@@ -90,7 +96,7 @@ async def join(ctx):
                     await asyncio.sleep(0.5)
                     # Re-setup listener to ensure voice recognition continues
                     print("[DEBUG] Re-setting up voice listener...")
-                    current_sink = setup_sink(vc, bot)
+                    current_sink = setup_sink(vc, bot, force_restart=True)
                     await asyncio.sleep(1.0)
                     print("[DEBUG] Skip complete, listener reset, resuming voice recognition loop")
                 else:
@@ -188,7 +194,7 @@ async def join(ctx):
                                 await ctx.send("⏭️ Đang chuyển bài...")
                                 # Re-setup voice listener
                                 await asyncio.sleep(0.5)
-                                setup_sink(vc, bot)
+                                setup_sink(vc, bot, force_restart=True)
                             else:
                                 await ctx.send("❌ Không có bài nào đang phát.")
                             continue
@@ -226,7 +232,7 @@ async def join(ctx):
                             await start_playback(ctx, song_queue)
                             # Re-setup voice listener after starting playback
                             await asyncio.sleep(0.5)
-                            setup_sink(vc, bot)
+                            setup_sink(vc, bot, force_restart=True)
                             break
                 finally:
                     # 🛡️ Release processing lock
@@ -309,7 +315,7 @@ async def skip(ctx):
         await ctx.send("⏭️ Đang chuyển bài...")
         # Re-setup voice listener after skip
         await asyncio.sleep(0.5)
-        setup_sink(ctx.voice_client, bot)
+        setup_sink(ctx.voice_client, bot, force_restart=True)
         await asyncio.sleep(0.5)
     else:
         await ctx.send("❌ Không có bài nào đang phát.")

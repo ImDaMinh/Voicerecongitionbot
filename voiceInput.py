@@ -265,20 +265,36 @@ class DiscordSink(voice_recv.AudioSink):
     def cleanup(self):
         pass
 
-def setup_sink(voice_client, bot):
-    """Setup voice sink for listening. Safely handles already-listening state."""
+def setup_sink(voice_client, bot, force_restart=False):
+    """Setup voice sink for listening. 
+    
+    Args:
+        voice_client: Discord voice client
+        bot: Discord bot instance
+        force_restart: If True, stop current listener and start new one (use after skip)
+    """
     try:
-        # If already listening, don't re-setup (prevents audio interruption)
-        if hasattr(voice_client, 'is_listening') and voice_client.is_listening():
-            # Already listening, no need to re-setup
-            return None
+        # Check if already listening
+        is_listening = hasattr(voice_client, 'is_listening') and voice_client.is_listening()
+        
+        if is_listening:
+            if not force_restart:
+                # Already listening and no force restart, skip
+                return None
+            else:
+                # Force restart: stop current listener first
+                try:
+                    voice_client.stop_listening()
+                    print("[Voice] 🔄 Stopped old listener for restart")
+                except Exception as e:
+                    print(f"[Voice] Warning stopping listener: {e}")
         
         sink = DiscordSink(bot)
         voice_client.listen(sink)
         print("[Voice] 🎤 Voice listener started")
         return sink
     except Exception as e:
-        print(f"[Voice] setup_sink error (may be already listening): {e}")
+        print(f"[Voice] setup_sink error: {e}")
         return None
 
 async def get_next_phrase():
