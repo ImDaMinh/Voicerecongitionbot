@@ -98,6 +98,46 @@ def extract_spotify_playlist_id(url):
     match = re.search(r'playlist[/:]([a-zA-Z0-9]+)', url)
     return match.group(1) if match else None
 
+def extract_spotify_track_id(url):
+    """Extract track ID from Spotify URL."""
+    # Matches: open.spotify.com/track/xxxxx or spotify.com/track/xxxxx
+    match = re.search(r'track[/:]([a-zA-Z0-9]+)', url)
+    return match.group(1) if match else None
+
+async def get_spotify_track_by_id(track_id):
+    """
+    Get track info from Spotify by track ID.
+    Returns dict with 'title', 'artist', 'album', 'duration_ms' or None if not found.
+    """
+    if not SPOTIFY_AVAILABLE or not spotify_client:
+        return None
+    
+    try:
+        track = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: spotify_client.track(track_id)
+        )
+        
+        if not track:
+            return None
+        
+        artists = [a.get('name', '') for a in track.get('artists', [])]
+        
+        result = {
+            'title': track.get('name', ''),
+            'artist': ', '.join(artists),
+            'album': track.get('album', {}).get('name', ''),
+            'duration_ms': track.get('duration_ms'),
+            'spotify_url': track.get('external_urls', {}).get('spotify', ''),
+            'thumbnail': track.get('album', {}).get('images', [{}])[0].get('url') if track.get('album', {}).get('images') else None,
+        }
+        
+        return result
+        
+    except Exception as e:
+        print(f"[SPOTIFY] Error getting track by ID: {e}")
+        return None
+
 async def get_spotify_tracks(playlist_url, max_tracks=100):
     """
     Get track info from Spotify playlist using Spotify API.
@@ -443,14 +483,29 @@ async def resolve_lazy_song(song_info):
 async def add_to_queue(ctx, query, queue):
     original_query = query
     
-    # 🟢 SPOTIFY-FIRST: Try to find exact track info on Spotify first
-    spotify_track = await search_spotify_track(query)
+    # 🟢 SPOTIFY TRACK URL: Extract track info directly from Spotify API
+    spotify_track = None
     spotify_enhanced_query = None
     
-    if spotify_track:
-        # Use Spotify's exact track name + artist for more accurate YouTube search
-        spotify_enhanced_query = f"{spotify_track['title']} {spotify_track['artist']}"
-        await ctx.send(f"🟢 **Spotify:** {spotify_track['title']} - {spotify_track['artist']}")
+    # Check if query is a Spotify track URL
+    if 'spotify.com/track' in query or 'open.spotify' in query:
+        track_id = extract_spotify_track_id(query)
+        if track_id:
+            print(f"[SPOTIFY] Detected track URL, extracting ID: {track_id}")
+            spotify_track = await get_spotify_track_by_id(track_id)
+            if spotify_track:
+                spotify_enhanced_query = f"{spotify_track['title']} {spotify_track['artist']}"
+                await ctx.send(f"🟢 **Spotify:** {spotify_track['title']} - {spotify_track['artist']}")
+            else:
+                await ctx.send("⚠️ Không thể lấy thông tin bài hát từ Spotify. Đang thử search...")
+    
+    # 🟢 SPOTIFY SEARCH: If not a URL, try to find exact track info on Spotify
+    if not spotify_track:
+        spotify_track = await search_spotify_track(query)
+        if spotify_track:
+            # Use Spotify's exact track name + artist for more accurate YouTube search
+            spotify_enhanced_query = f"{spotify_track['title']} {spotify_track['artist']}"
+            await ctx.send(f"🟢 **Spotify:** {spotify_track['title']} - {spotify_track['artist']}")
     
     # Step 1: Correct the query using english_corrector
     corrected_query = correct_english_query(query)
