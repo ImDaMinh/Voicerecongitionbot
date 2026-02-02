@@ -35,6 +35,7 @@ _last_command_time = 0
 _command_cooldown = 2.0  # seconds between commands
 _is_processing = False
 _last_processed_text = ""
+_last_skip_time = 0  # Anti-duplicate for skip commands
 
 @bot.event
 async def on_ready():
@@ -88,9 +89,20 @@ async def join(ctx):
             # Check for skip commands
             if spoken in skip_commands:
                 print(f"[DEBUG] Skip command detected: '{spoken}'")
-                if ctx.voice_client and ctx.voice_client.is_playing():
+                
+                # Anti-duplicate: prevent multiple skip commands within 3 seconds
+                if current_time - _last_skip_time < 3.0:
+                    print(f"[SKIP] Ignoring duplicate skip command (within 3s cooldown)")
+                    continue
+                
+                # Check if there's something to skip (playing OR has queue)
+                has_music = ctx.voice_client and (ctx.voice_client.is_playing() or song_queue)
+                
+                if has_music:
+                    _last_skip_time = current_time  # Update last skip time
                     print("[DEBUG] Stopping current track...")
-                    ctx.voice_client.stop()
+                    if ctx.voice_client.is_playing():
+                        ctx.voice_client.stop()
                     await ctx.send("⏭️ Đang chuyển bài...")
                     # Wait for the audio to finish stopping
                     await asyncio.sleep(0.5)
@@ -189,8 +201,12 @@ async def join(ctx):
                             return
 
                         elif spoken_cmd in ["skip", "next", "bỏ qua", "qua bài", "bài tiếp", "tiếp"]:
-                            if ctx.voice_client and ctx.voice_client.is_playing():
-                                ctx.voice_client.stop()
+                            # Check if there's something to skip (playing OR has queue)
+                            has_music = ctx.voice_client and (ctx.voice_client.is_playing() or song_queue)
+                            
+                            if has_music:
+                                if ctx.voice_client.is_playing():
+                                    ctx.voice_client.stop()
                                 await ctx.send("⏭️ Đang chuyển bài...")
                                 # Re-setup voice listener
                                 await asyncio.sleep(0.5)
