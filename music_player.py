@@ -495,7 +495,7 @@ async def add_to_queue(ctx, query, queue):
             spotify_track = await get_spotify_track_by_id(track_id)
             if spotify_track:
                 spotify_enhanced_query = f"{spotify_track['title']} {spotify_track['artist']}"
-                await ctx.send(f"🟢 **Spotify:** {spotify_track['title']} - {spotify_track['artist']}")
+                print(f"[SPOTIFY] Found track: {spotify_track['title']} - {spotify_track['artist']}")
                 # Replace query with song info for YouTube search (don't use URL)
                 query = spotify_enhanced_query
                 original_query = spotify_track['title']
@@ -508,7 +508,7 @@ async def add_to_queue(ctx, query, queue):
         if spotify_track:
             # Use Spotify's exact track name + artist for more accurate YouTube search
             spotify_enhanced_query = f"{spotify_track['title']} {spotify_track['artist']}"
-            await ctx.send(f"🟢 **Spotify:** {spotify_track['title']} - {spotify_track['artist']}")
+            print(f"[SPOTIFY] Matched: {spotify_track['title']} - {spotify_track['artist']}")
     
     # Step 1: Correct the query using english_corrector
     corrected_query = correct_english_query(query)
@@ -674,7 +674,19 @@ async def add_to_queue(ctx, query, queue):
             if variation != original_query and variation.replace(' official audio', '') != original_query:
                 await ctx.send(f"🔍 Đã tìm: **{corrected_query}** (từ '{original_query}')")
             
-            await ctx.send(f"✅ Đã thêm vào hàng đợi: **{song_info['title']}**")
+            # 🎨 Beautiful embed for added song
+            embed = discord.Embed(
+                title="✅ Đã thêm vào hàng đợi",
+                description=f"**[{song_info['title']}]({song_info.get('webpage_url', '')})**",
+                color=discord.Color.from_rgb(30, 215, 96)  # Spotify green
+            )
+            if song_info.get('thumbnail'):
+                embed.set_thumbnail(url=song_info['thumbnail'])
+            embed.add_field(name="👤 Nghệ sĩ", value=song_info.get('uploader', 'Unknown'), inline=True)
+            embed.add_field(name="⏱️ Thời lượng", value=format_duration(song_info.get('duration')), inline=True)
+            embed.add_field(name="📋 Vị trí", value=f"#{len(queue)}", inline=True)
+            
+            await ctx.send(embed=embed)
             return  # Success, exit the function
             
         except Exception as e:
