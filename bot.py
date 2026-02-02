@@ -90,34 +90,8 @@ async def join(ctx):
                 print(f"[DEBUG] Skip command detected: '{spoken}'")
                 if ctx.voice_client and ctx.voice_client.is_playing():
                     print("[DEBUG] Stopping current track...")
-                    
-                    # Get next song info before skipping
-                    from music_player import format_duration
-                    next_song = song_queue[0] if song_queue else None
-                    
                     ctx.voice_client.stop()
-                    
-                    # Create skip embed
-                    if next_song:
-                        embed = discord.Embed(
-                            title="⏭️ Đã chuyển bài",
-                            description=f"**Tiếp theo:** [{next_song.get('title', 'Loading...')}]({next_song.get('webpage_url', '')})",
-                            color=discord.Color.from_rgb(255, 165, 0)  # Orange
-                        )
-                        if next_song.get('thumbnail'):
-                            embed.set_thumbnail(url=next_song['thumbnail'])
-                        embed.add_field(name="👤 Nghệ sĩ", value=next_song.get('uploader', 'Unknown'), inline=True)
-                        embed.add_field(name="⏱️ Thời lượng", value=format_duration(next_song.get('duration')), inline=True)
-                        embed.add_field(name="📋 Còn lại", value=f"{len(song_queue)} bài", inline=True)
-                        await ctx.send(embed=embed)
-                    else:
-                        embed = discord.Embed(
-                            title="⏭️ Đã chuyển bài",
-                            description="*Không còn bài nào trong queue*",
-                            color=discord.Color.orange()
-                        )
-                        await ctx.send(embed=embed)
-                    
+                    await ctx.send("⏭️ Đang chuyển bài...")
                     # Wait for the audio to finish stopping
                     await asyncio.sleep(0.5)
                     # Re-setup listener to ensure voice recognition continues
@@ -337,32 +311,8 @@ async def play(ctx, *, query: str = None):
 async def skip(ctx):
     """Skip the current song. Usage: lskip"""
     if ctx.voice_client and ctx.voice_client.is_playing():
-        from music_player import format_duration
-        next_song = song_queue[0] if song_queue else None
-        
         ctx.voice_client.stop()
-        
-        # Create skip embed
-        if next_song:
-            embed = discord.Embed(
-                title="⏭️ Đã chuyển bài",
-                description=f"**Tiếp theo:** [{next_song.get('title', 'Loading...')}]({next_song.get('webpage_url', '')})",
-                color=discord.Color.from_rgb(255, 165, 0)  # Orange
-            )
-            if next_song.get('thumbnail'):
-                embed.set_thumbnail(url=next_song['thumbnail'])
-            embed.add_field(name="👤 Nghệ sĩ", value=next_song.get('uploader', 'Unknown'), inline=True)
-            embed.add_field(name="⏱️ Thời lượng", value=format_duration(next_song.get('duration')), inline=True)
-            embed.add_field(name="📋 Còn lại", value=f"{len(song_queue)} bài", inline=True)
-            await ctx.send(embed=embed)
-        else:
-            embed = discord.Embed(
-                title="⏭️ Đã chuyển bài",
-                description="*Không còn bài nào trong queue*",
-                color=discord.Color.orange()
-            )
-            await ctx.send(embed=embed)
-        
+        await ctx.send("⏭️ Đang chuyển bài...")
         # Re-setup voice listener after skip
         await asyncio.sleep(0.5)
         setup_sink(ctx.voice_client, bot, force_restart=True)
