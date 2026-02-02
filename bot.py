@@ -49,7 +49,7 @@ async def join(ctx):
         await ctx.send("🎤 Listening... Nói 'Lunaplay + tên bài' hoặc 'Luna mở bài + tên bài' để bật nhạc!")
 
         while True:
-            global _last_command_time, _is_processing, _last_processed_text
+            global _last_command_time, _is_processing, _last_processed_text, _last_skip_time
             
             wake_text = await get_next_phrase()
             spoken = wake_text.lower().strip()
