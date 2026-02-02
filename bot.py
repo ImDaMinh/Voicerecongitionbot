@@ -310,8 +310,11 @@ async def play(ctx, *, query: str = None):
 @bot.command(name='skip', aliases=['s', 'next'])
 async def skip(ctx):
     """Skip the current song. Usage: lskip"""
-    if ctx.voice_client and ctx.voice_client.is_playing():
-        ctx.voice_client.stop()
+    # Check if playing OR if there's a song in the current_song tracker (handles edge cases)
+    current = get_current_song()
+    if ctx.voice_client and (ctx.voice_client.is_playing() or ctx.voice_client.is_paused() or current):
+        if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
+            ctx.voice_client.stop()
         await ctx.send("⏭️ Đang chuyển bài...")
         # Re-setup voice listener after skip
         await asyncio.sleep(0.5)
