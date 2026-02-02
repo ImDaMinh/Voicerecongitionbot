@@ -496,6 +496,9 @@ async def add_to_queue(ctx, query, queue):
             if spotify_track:
                 spotify_enhanced_query = f"{spotify_track['title']} {spotify_track['artist']}"
                 await ctx.send(f"🟢 **Spotify:** {spotify_track['title']} - {spotify_track['artist']}")
+                # Replace query with song info for YouTube search (don't use URL)
+                query = spotify_enhanced_query
+                original_query = spotify_track['title']
             else:
                 await ctx.send("⚠️ Không thể lấy thông tin bài hát từ Spotify. Đang thử search...")
     
@@ -515,7 +518,8 @@ async def add_to_queue(ctx, query, queue):
     
     # If we have Spotify match, prioritize that as the first search
     if spotify_enhanced_query:
-        query_variations = [spotify_enhanced_query] + query_variations
+        # Put spotify query first and remove duplicates
+        query_variations = [spotify_enhanced_query] + [v for v in query_variations if v != spotify_enhanced_query]
     
     # Add "official audio" or "official music video" to improve search results
     enhanced_variations = []
