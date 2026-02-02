@@ -56,6 +56,7 @@ ytdl_format_options = {
     'ignoreerrors': True,
     'logtostderr': False,
     'geo_bypass': True,
+    'cookiefile': 'www.youtube.com_cookies.txt',  # YouTube cookies to bypass bot detection
     'extractor_args': {
         'youtube': {
             'player_client': ['android', 'web'],
