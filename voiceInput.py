@@ -224,6 +224,9 @@ class DiscordSink(voice_recv.AudioSink):
             
             # Chỉ đưa vào queue nếu có kết quả và chứa wake word hoặc là lệnh quan trọng
             if final_text:
+                # 🔊 DEBUG: Print everything bot hears
+                print(f"[Voice] 👂 Heard: \"{final_text}\"")
+                
                 # ALL commands require Luna wake word to prevent accidental triggers
                 important_commands = [
                     "luna skip", "luna chuyển bài", "luna ngắt kết nối", 
@@ -244,14 +247,13 @@ class DiscordSink(voice_recv.AudioSink):
                         current_time - self.last_recognized_time < self.DUPLICATE_COOLDOWN):
                         print(f"[Voice] ⏳ Duplicate skipped: {final_text[:30]}...")
                     else:
-                        print(f"[Voice] ✅ Recognized: {final_text}")
+                        print(f"[Voice] ✅ Command accepted: {final_text}")
                         self.last_recognized_text = final_text
                         self.last_recognized_time = current_time
                         await text_queue.put(final_text)
                 else:
-                    # Không phải lệnh quan trọng -> bỏ qua (không spam)
-                    if DEBUG_MODE:
-                        print(f"[Voice] Ignored (no wake word): {final_text}")
+                    # Không phải lệnh quan trọng -> bỏ qua
+                    print(f"[Voice] ❌ Ignored (no wake word)")
                         
         except Exception as e:
             if DEBUG_MODE:
