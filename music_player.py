@@ -483,6 +483,58 @@ async def resolve_lazy_song(song_info):
 async def add_to_queue(ctx, query, queue):
     original_query = query
     
+    # 🔴 YOUTUBE DIRECT URL: Handle YouTube links directly without searching
+    youtube_url_patterns = [
+        'youtube.com/watch',
+        'youtu.be/',
+        'youtube.com/shorts/',
+        'music.youtube.com/watch',
+    ]
+    
+    is_youtube_url = any(pattern in query for pattern in youtube_url_patterns)
+    
+    if is_youtube_url:
+        print(f"[YOUTUBE] Detected direct URL: {query}")
+        try:
+            # Extract info directly from the URL
+            info = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: ytdl_full.extract_info(query, download=False)
+            )
+            
+            if info and info.get('url'):
+                song_info = {
+                    'url': info['url'],
+                    'title': info.get('title', 'Unknown'),
+                    'thumbnail': info.get('thumbnail'),
+                    'duration': info.get('duration'),
+                    'uploader': info.get('uploader', 'Unknown'),
+                    'webpage_url': info.get('webpage_url', query),
+                }
+                queue.append(song_info)
+                
+                # 🎨 Beautiful embed for added song
+                embed = discord.Embed(
+                    title="✅ Đã thêm vào hàng đợi",
+                    description=f"**[{song_info['title']}]({song_info.get('webpage_url', '')})**",
+                    color=discord.Color.from_rgb(255, 0, 0)  # YouTube red
+                )
+                if song_info.get('thumbnail'):
+                    embed.set_thumbnail(url=song_info['thumbnail'])
+                embed.add_field(name="👤 Nghệ sĩ", value=song_info.get('uploader', 'Unknown'), inline=True)
+                embed.add_field(name="⏱️ Thời lượng", value=format_duration(song_info.get('duration')), inline=True)
+                embed.add_field(name="📋 Vị trí", value=f"#{len(queue)}", inline=True)
+                
+                await ctx.send(embed=embed)
+                return  # Success, exit the function
+            else:
+                await ctx.send("⚠️ Không thể tải video từ link này. Đang thử search...")
+                # Fall through to search logic
+        except Exception as e:
+            print(f"[YOUTUBE] Error extracting direct URL: {e}")
+            await ctx.send("⚠️ Lỗi khi tải video. Đang thử search...")
+            # Fall through to search logic
+    
     # 🟢 SPOTIFY TRACK URL: Extract track info directly from Spotify API
     spotify_track = None
     spotify_enhanced_query = None
